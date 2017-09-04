@@ -72,6 +72,13 @@ In case symstore is not able to locate python-gi and gir packages while compress
 Change Log
 ==========
 
+0.2.5-dev (5 September 2017)
+--------------------
+
+* Added logging and silent mode
+* minor improvements
+
+
 0.2.3 (24 June 2017)
 --------------------
 
