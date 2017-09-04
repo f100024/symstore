@@ -24,6 +24,8 @@ TRANSACTION_LINE_RE = re.compile(
     "\"([^\"]*)\","
     r".*")
 
+ID_NUMBER_RE = re.compile(r"\d{10}")
+
 ADMIN_DIR = "000Admin"
 LAST_ID_FILE = path.join(ADMIN_DIR, "lastid.txt")
 HISTORY_FILE = path.join(ADMIN_DIR, "history.txt")
@@ -134,11 +136,8 @@ class TransactionEntry:
             try:
                 log.debug("Copy %s %s" % (self.source_file, dest_dir))
                 shutil.copy(self.source_file, dest_dir)
-            except IOError as e:
+            except (IOError, OSError) as e:
                 log.debug("Can\'t copy %s to %s. Error: %s"
-                          % (self.source_file, dest_dir, e))
-            except OSError as e:
-                log.debug("Can\'t copy %s to %s. Erro: %s"
                           % (self.source_file, dest_dir, e))
 
     def __str__(self):
@@ -171,9 +170,7 @@ class Transaction:
             path_efile = path.join(self._symstore._admin_dir, self.id)
             efile = open(path_efile, mode=mode)
             return efile
-        except IOError as e:
-            log.debug("File %s is unreachable. Error %s" % (path_efile, e))
-        except OSError as e:
+        except (IOError, OSError) as e:
             log.debug("File %s is unreachable. Error %s" % (path_efile, e))
 
     def _load_entries(self):
@@ -181,22 +178,15 @@ class Transaction:
             return []
 
         entries = []
-        try:
-            with self._entries_file() as efile:
-                for line in efile.readlines():
-                    entry, source_file = [
-                        s.strip("\"") for s in line.strip().split(",")]
-
-                    file_name, file_hash = entry.split("\\")
-
-                    transaction_entry = self.transaction_entry_class.load(
-                        self._symstore, file_name, file_hash, source_file)
-                    entries.append(transaction_entry)
+        with self._entries_file() as efile:
+            for line in efile.readlines():
+                entry, source_file = [
+                    s.strip("\"") for s in line.strip().split(",")]
+                file_name, file_hash = entry.split("\\")
+                transaction_entry = self.transaction_entry_class.load(
+                    self._symstore, file_name, file_hash, source_file)
+                entries.append(transaction_entry)
             return entries
-        except IOError as e:
-            log.debug(e)
-        except OSError as e:
-            log.debug(e)
 
     def add_file(self, file, compress=False):
         """
@@ -205,9 +195,7 @@ class Transaction:
         """
         try:
             fh = _file_hash(file)
-        except IOError as e:
-            log.debug("%s" % e)
-        except OSError as e:
+        except (IOError, OSError) as e:
             log.debug("%s" % e)
 
         if fh:
@@ -273,7 +261,11 @@ class Transactions:
         self._transactions = None
 
     def _server_file(self, mode="r"):
-        return open(self._symstore._server_file, mode=mode)
+        try:
+            return open(self._symstore._server_file, mode=mode)
+        except IOError as e:
+            log.debug("File %s is unreachable. Error %s."
+                      % (self._symstore._server_file, e))
 
     def _server_file_exists(self):
         return path.isfile(self._symstore._server_file)
@@ -304,7 +296,6 @@ class Transactions:
     def add(self, transaction):
         with self._server_file("a") as sfile:
             sfile.write("%s\n" % transaction)
-        # TODO handle I/O errors
 
 
 class History:
@@ -362,14 +353,15 @@ class History:
             return f.read() != b'\n'
 
         with self._history_file("ab+") as hfile:
-            if prefix_with_newline(hfile):
-                # add line break if appending to existing non-empty file
-                hfile.write(b"\n")
+            try:
+                if prefix_with_newline(hfile):
+                    # add line break if appending to existing non-empty file
+                    hfile.write(b"\n")
 
-            new_line = "%s" % transaction
-            hfile.write(new_line.encode("utf-8"))
-
-        # TODO handle I/O errors
+                new_line = "%s" % transaction
+                hfile.write(new_line.encode("utf-8"))
+            except IOError as e:
+                log.debug("Error write to history file. Error: %s" % e)
 
 
 class Store:
@@ -409,24 +401,32 @@ class Store:
 
     def _create_dirs(self):
         if not path.isdir(self._path):
-            os.mkdir(self._path)
-            # TODO handle mkdir errors
+            try:
+                os.mkdir(self._path)
+            except (IOError, OSError) as e:
+                raise NameError("Can\'t mkdir. Error: %s" % e)
 
         admin_dir = self._admin_dir
         if not path.isdir(admin_dir):
-            os.mkdir(admin_dir)
-            # TODO handle mkdir errors
+            try:
+                os.mkdir(admin_dir)
+            except (IOError, OSError) as e:
+                raise NameError("Can\'t mkdir. Error: %s" % e)
 
     def _next_transaction_id(self):
         last_id_file = self._last_id_file
 
         last_id = 0
         if path.isfile(last_id_file):
-            # TODO handle open and read errors
-            # TODO handle parse errors
-            last_id = int(open(last_id_file, "r").read())
-
-        return "%.010d" % (last_id + 1)
+            try:
+                m = ID_NUMBER_RE.match(open(last_id_file, "r").read())
+                if m:
+                    last_id = int(m.group())
+                    return "%.010d" % (last_id + 1)
+                else:
+                    raise NameError("Error with lastid.txt file.")
+            except (IOError, OSError) as e:
+                raise NameError("Error with lastid.txt file. Error: %s" % e)
 
     def _write_transaction_id(self, trans_id):
         with open(self._last_id_file, "w") as id_file:
