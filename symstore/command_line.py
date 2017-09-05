@@ -10,8 +10,8 @@ import os
 import symstore.logger
 import logging
 
-
 log = symstore.logger.get_logger(__name__)
+
 
 class CompressionNotSupported(Exception):
     pass
@@ -49,6 +49,9 @@ def parse_args():
 
     parser.add_argument("-r", "--product-version", default="",
                         help="version of the product")
+
+    parser.add_argument("-m", "--message", default="",
+                        help="message will be added as info of commit")
 
     parser.add_argument("--version",
                         action="version",
@@ -112,17 +115,18 @@ def main():
 
     args = parse_args()
     sym_store = symstore.Store(args.store_path)
-    pp_args = "\n ".join([": ".join([k, str(getattr(args, k)) \
-                                     if not isinstance(getattr(args, k), (list))\
-                                     else ", ".join(getattr(args, k))]) \
+    pp_args = "\n ".join([": ".join([k, str(getattr(args, k))
+                                     if not isinstance(getattr(args, k), (list))
+                                     else ", ".join(getattr(args, k))])
                           for k in vars(args)])
 
     log_level = logging.INFO if args.silent else logging.DEBUG
     log_file = args.save_log if args.save_log else None
+    message = args.message if args.message else ""
 
     update_logging(log, log_level=log_level, log_file=log_file)
     log.debug("Started symstore ops via CLI.")
-    log.debug("Parameters: %s " %pp_args)
+    log.debug("Parameters: %s " % pp_args)
 
     try:
         # error-out if no compression
@@ -130,7 +134,8 @@ def main():
 
         # create new add transaction, add all specified files
         transaction = sym_store.new_transaction(args.product_name,
-                                                args.product_version)
+                                                args.product_version,
+                                                message)
 
         for target_item in args.target_files:
             if os.path.isdir(target_item):
@@ -150,4 +155,3 @@ def main():
         err_exit("%s: invalid %s file: %s" % (file, e.format_name, e))
     except CompressionNotSupported:
         err_exit("gcab module not available, compression not supported")
-
