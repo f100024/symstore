@@ -26,6 +26,7 @@ TRANSACTION_LINE_RE = re.compile(
 
 ID_NUMBER_RE = re.compile(r"\d{10}")
 
+INDEX_DIR = "indices"
 ADMIN_DIR = "000Admin"
 LAST_ID_FILE = path.join(ADMIN_DIR, "lastid.txt")
 HISTORY_FILE = path.join(ADMIN_DIR, "history.txt")
@@ -234,6 +235,17 @@ class Transaction:
                     except IOError as e:
                         log.debug("Error %s" % e)
 
+    def index_lines(self):
+        index_entries = ['\"%s,%s,\"%s,src,,,,'
+        % ("\\".join(str(entry_string).split(',')[1].split('\\')[-2:]),
+           str(entry_string).split(',')[0],
+           "\\".join(str(entry_string).split(',')[1].split('\\')[-2:]))
+                            for entry_string in self.entries]
+
+        return {"product": self.product,
+                "version": self.version, "entries": index_entries}
+
+
     def __str__(self):
         date_stamp = self.timestamp.strftime("%m/%d/%Y")
         time_stamp = self.timestamp.strftime("%H:%M:%S")
@@ -399,6 +411,10 @@ class Store:
     def _pingme_file(self):
         return path.join(self._path, PINGME_FILE)
 
+    @property
+    def _index_dir(self):
+        return path.join(self._path, INDEX_DIR)
+
     def _create_dirs(self):
         if not path.isdir(self._path):
             try:
@@ -406,12 +422,12 @@ class Store:
             except (IOError, OSError) as e:
                 raise NameError("Can\'t mkdir. Error: %s" % e)
 
-        admin_dir = self._admin_dir
-        if not path.isdir(admin_dir):
-            try:
-                os.mkdir(admin_dir)
-            except (IOError, OSError) as e:
-                raise NameError("Can\'t mkdir. Error: %s" % e)
+        for item_dir in [self._admin_dir, self._index_dir]:
+            if not path.isdir(item_dir):
+                try:
+                    os.mkdir(item_dir)
+                except (IOError, OSError) as e:
+                    raise NameError("Can\'t mkdir. Error: %s" % e)
 
     def _next_transaction_id(self):
         last_id_file = self._last_id_file
@@ -441,8 +457,8 @@ class Store:
         os.utime(pingme_path, (timestamp, timestamp))
 
     def new_transaction(self, product, version, message, type="add"):
-        return Transaction(self, type=type, comment=message,
-                           product=product, version=version)
+        return Transaction(self, type=type, product=product,
+                           comment=message, version=version)
 
     def commit(self, transaction):
         self._create_dirs()
@@ -457,3 +473,12 @@ class Store:
 
         self._write_transaction_id(transaction.id)
         self._touch_pingme(now)
+
+    def index_data(self, transaction):
+		m = transaction.index_lines()
+		with open(os.path.join(self._index_dir,
+                         'index_%s_%s.txt'
+                         % (m['product'], m['version'])), 'w') as ifile:
+			for item_lines in m['entries']:
+				new_line = "%s" % item_lines
+				ifile.write(new_line.encode("utf-8")+b"\n")

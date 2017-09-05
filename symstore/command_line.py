@@ -36,6 +36,8 @@ def parse_args():
 
     parser.add_argument("--silent", action="store_true", dest="silent")
 
+    parser.add_argument("--index", action="store_true", dest="index")
+
     parser.add_argument("--save_log",
                         default=False,
                         dest="save_log")
@@ -149,6 +151,10 @@ def main():
 
         # commit the transaction to the store
         sym_store.commit(transaction)
+
+        if args.index:
+            sym_store.index_data(transaction)
+
     except symstore.UnknownFileExtension as e:
         unknown_ext_err(file, e.file_extension)
     except symstore.FileFormatError as e:
