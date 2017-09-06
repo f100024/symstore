@@ -76,6 +76,8 @@ Change Log
 --------------------
 
 * Added logging and silent mode
+* Added file indexing for further cleaning and;
+* Turned on "comment" ability
 * minor improvements
 
 
